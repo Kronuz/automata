@@ -1,0 +1,35 @@
+cmake_minimum_required(VERSION 3.14)
+project(automata LANGUAGES CXX)
+
+include(FetchContent)
+FetchContent_Declare(unicode GIT_REPOSITORY https://github.com/Kronuz/unicode.git GIT_TAG 297413c889fd99a182f1e9b8c1bc97bb2f2ded29)
+FetchContent_MakeAvailable(unicode)
+
+# Header-only: automata.hh is the whole implementation.
+add_library(automata INTERFACE)
+target_include_directories(automata INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_features(automata INTERFACE cxx_std_20)
+target_link_libraries(automata INTERFACE unicode::unicode)
+add_library(automata::automata ALIAS automata)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  enable_testing()
+  find_package(Threads REQUIRED)
+  add_executable(automata_test test/automata_test.cc)
+  target_link_libraries(automata_test PRIVATE automata Threads::Threads)
+  add_test(NAME automata COMMAND automata_test)
+
+  # The fuzz target walks termdict dictionaries too: a test-only dependency.
+  FetchContent_Declare(termdict GIT_REPOSITORY https://github.com/Kronuz/termdict.git GIT_TAG d7f5954ae84177c1587cc69a16a18d7911ee0501)
+  FetchContent_MakeAvailable(termdict)
+  add_executable(fuzz_automata_replay fuzz/fuzz_automata.cc fuzz/replay.cc)
+  target_link_libraries(fuzz_automata_replay PRIVATE automata termdict::termdict)
+  add_test(NAME fuzz_automata_replay COMMAND fuzz_automata_replay "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus/automata")
+  option(AUTOMATA_FUZZ "Build the libFuzzer target" OFF)
+  if(AUTOMATA_FUZZ)
+    add_executable(fuzz_automata fuzz/fuzz_automata.cc)
+    target_link_libraries(fuzz_automata PRIVATE automata termdict::termdict)
+    target_compile_options(fuzz_automata PRIVATE -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all)
+    target_link_options(fuzz_automata PRIVATE -fsanitize=fuzzer,address,undefined)
+  endif()
+endif()
